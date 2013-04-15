@@ -1,7 +1,7 @@
 " File:        xkbswitch.vim
 " Authors:     Alexey Radkov
 "              Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
-" Version:     0.5
+" Version:     0.6
 " Description: Automatic keyboard layout switching upon entering/leaving
 "              insert mode
 
@@ -124,14 +124,20 @@ if !exists('g:XkbSwitchIMappingsSkipFt')
     let g:XkbSwitchIMappingsSkipFt = []
 endif
 
+if !exists('g:XkbSwitchPostIEnterAuto')
+    let g:XkbSwitchPostIEnterAuto = []
+endif
+
 
 fun! <SID>xkb_mappings_load()
     for hcmd in ['gh', 'gH', 'g']
         exe "nnoremap <buffer> <silent> ".hcmd.
-                    \ " :call <SID>xkb_switch(1)<CR>".hcmd
+                    \ " :call <SID>xkb_switch(1, 1)<CR>".hcmd
     endfor
-    xnoremap <buffer> <silent> <C-g> :<C-u>call <SID>xkb_switch(1)<CR>gv<C-g>
-    snoremap <buffer> <silent> <C-g> <C-g>:<C-u>call <SID>xkb_switch(0)<CR>gv
+    xnoremap <buffer> <silent> <C-g>
+                \ :<C-u>call <SID>xkb_switch(1, 1)<CR>gv<C-g>
+    snoremap <buffer> <silent> <C-g>
+                \ <C-g>:<C-u>call <SID>xkb_switch(0)<CR>gv
     let b:xkb_mappings_loaded = 1
 endfun
 
@@ -210,7 +216,7 @@ fun! <SID>imappings_load()
     endfor
 endfun
 
-fun! <SID>xkb_switch(mode)
+fun! <SID>xkb_switch(mode,...)
     let cur_layout = libcall(g:XkbSwitch['backend'], g:XkbSwitch['get'], '')
     if a:mode == 0
         if exists('b:xkb_nlayout')
@@ -226,12 +232,18 @@ fun! <SID>xkb_switch(mode)
             call <SID>imappings_load()
         endif
         if exists('b:xkb_ilayout')
-            if b:xkb_ilayout != cur_layout
+            if b:xkb_ilayout != cur_layout && !exists('b:xkb_ilayout_managed')
                 call libcall(g:XkbSwitch['backend'], g:XkbSwitch['set'],
                             \ b:xkb_ilayout)
             endif
         endif
-        let b:xkb_nlayout = cur_layout
+        if !exists('b:xkb_pending_imode')
+            let b:xkb_pending_imode = 0
+        endif
+        if !b:xkb_pending_imode
+            let b:xkb_nlayout = cur_layout
+        endif
+        let b:xkb_pending_imode = a:0 && a:1
     endif
 endfun
 
@@ -240,8 +252,16 @@ fun! <SID>enable_xkb_switch(force)
         return
     endif
     if filereadable(g:XkbSwitch['backend']) == 1
-        autocmd InsertEnter * call <SID>xkb_switch(1)
-        autocmd InsertLeave * call <SID>xkb_switch(0)
+        augroup XkbSwitch
+            au!
+            autocmd InsertEnter * call <SID>xkb_switch(1)
+            for item in g:XkbSwitchPostIEnterAuto
+                exe "autocmd InsertEnter ".item[0]['pat']." ".item[0]['cmd'].
+                            \ " | if ".item[1].
+                                \ " | let b:xkb_ilayout_managed = 1 | endif"
+            endfor
+            autocmd InsertLeave * call <SID>xkb_switch(0)
+        augroup END
     endif
     let g:XkbSwitchEnabled = 1
 endfun
