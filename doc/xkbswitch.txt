@@ -1,10 +1,10 @@
-*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2013 Apr 15
+*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2013 Apr 19
 
                             ---------------------
                              Xkb Layout Switcher
                             ---------------------
 
-                                version 0.6
+                                version 0.7
 
 Authors: Alexey Radkov; Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
 
@@ -42,8 +42,10 @@ keyboard layout switcher is currently unknown and hence not supported.
 2. Features~
 
   - Supported OS: UNIX / X Server, Windows
-  - Switches keyboard layout when entering / leaving Insert and Select mode
+  - Switches keyboard layout when entering / leaving Insert and Select modes
   - Keyboard layouts are stored separately for each buffer
+  - Keyboard layouts are kept intact while navigating between windows or
+    tabs without leaving Insert mode
   - Automatic loading of language-friendly Insert mode mappings duplicates.
     For example when Russian mappings have loaded then if there was a mapping
 >
@@ -133,6 +135,15 @@ for '(' and ')', therefore assuming that in Deutsch translation map there
 could be ')' to '=' translation, we would get '=' unusable in any keyboard
 layout (as far as echofunc treats ')' in a very specific way). That is why
 this translation is missing in example above and in file xkbswitch.tr content.
+
+It makes sense to disable XkbSwitch for buffers with specific filetypes, for
+example various file system or tag navigators. For example to disable
+XkbSwitch for NerdTree add in your .vimrc line
+>
+    let g:XkbSwitchSkipFt = [ 'nerdtree' ]
+<
+By default (e.g. when g:XkbSwitchSkipFt is not defined in .vimrc) following
+filetypes are skipped: 'tagbar', 'gundo', 'nerdtree' and 'fuf' (FuzzyFinder).
 
 You can enable XkbSwitch in runtime (e.g. when g:XkbSwitchEnabled is not set
 in your .vimrc) by issuing command
@@ -269,10 +280,12 @@ In .vimrc following lines must be added:
              \ [{'pat': '*.mdict', 'cmd': 'call MdictCheckLang(1)'}, 0] ]
 <
 Function MdictCheckLang() does all the custom layout switching and can be
-regarded as a plugin to the XkbSwitch. The first three autocommands at the end
-are optional and only make editing mdict files more comfortable. The last
-autocommand (for CursorMovedI events) calls MdictCheckLang() when cursor moves
-into different columns in Insert mode. The next definition
+regarded as a plugin to the XkbSwitch. The first autocommand states that if
+file has extension 'mdict' then its filetype must be 'vimwiki' and turns on
+XkbSwitch. The next two autocommands are optional and only make editing mdict
+files more comfortable. The last autocommand (for CursorMovedI events) calls
+MdictCheckLang() when cursor moves into different columns in Insert mode.
+The next definition
 >
  let g:XkbSwitchPostIEnterAuto = [
              \ [{'pat': '*.mdict', 'cmd': 'call MdictCheckLang(1)'}, 0] ]
@@ -314,6 +327,15 @@ XkbSwitch when entering Insert mode.
     keys in Insert mode mappings duplicates as they are. But this is not the
     case in GTK based gvim. The issue is still investigated.
 
+  - XkbSwitch supports switching via Select mode too. But there is a case when
+    switching from Select mode to Normal mode will fail to restore Normal mode
+    keyboard layout. This will happen when leaving Select mode without any
+    character having been entered. The reason is simple: vim does not generate
+    events that could be caught by autocommands when switching from Select
+    mode to Normal mode. A workaround could be: when you are leaving Select
+    mode without any character entered do it via Visual mode, e.g. enter
+    <C-G><Esc> instead simply <Esc>.
+
 ==============================================================================
                                             *xkbswitch-changes*
 A. Change History~
@@ -351,5 +373,11 @@ A. Change History~
     - Added an example of how custom keyboard layout switching rules inside
       Insert mode can be implemented
     - Fixed Select mode switching broken in version 0.5
+
+0.7
+    - Keyboard layouts are kept intact while navigating between windows or
+      tabs without leaving Insert mode
+    - A new variable g:XkbSwitchSkipFt was introduced to provide ability of
+      disabling XkbSwitch for specific filetypes
 
 vim:tw=78:sts=8:ts=8:sw=8:noet:ft=help:
