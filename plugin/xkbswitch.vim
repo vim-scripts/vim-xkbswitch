@@ -1,7 +1,7 @@
 " File:        xkbswitch.vim
 " Authors:     Alexey Radkov
 "              Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
-" Version:     0.8.1
+" Version:     0.8.2
 " Description: Automatic keyboard layout switching upon entering/leaving
 "              insert mode
 
@@ -26,19 +26,24 @@ if !exists('g:XkbSwitchLib')
     endif
 endif
 
+" 'local' defines if backend gets and sets keyboard layout locally in the
+" window or not
 let s:XkbSwitchDict = {
             \ 'unix':
             \ {'backend': g:XkbSwitchLib,
             \  'get':     'Xkb_Switch_getXkbLayout',
-            \  'set':     'Xkb_Switch_setXkbLayout'},
+            \  'set':     'Xkb_Switch_setXkbLayout',
+            \  'local':   0},
             \ 'win32':
             \ {'backend': g:XkbSwitchLib,
             \  'get':     'Xkb_Switch_getXkbLayout',
-            \  'set':     'Xkb_Switch_setXkbLayout'},
+            \  'set':     'Xkb_Switch_setXkbLayout',
+            \  'local':   1},
             \ 'win64':
             \ {'backend': g:XkbSwitchLib,
             \  'get':     'Xkb_Switch_getXkbLayout',
-            \  'set':     'Xkb_Switch_setXkbLayout'},
+            \  'set':     'Xkb_Switch_setXkbLayout',
+            \  'local':   1},
             \ }
 
 if !exists('g:XkbSwitch')
@@ -140,11 +145,17 @@ if !exists('g:XkbSwitchPostIEnterAuto')
     let g:XkbSwitchPostIEnterAuto = []
 endif
 
-if !exists('g:XkbSwitchFixNoBufLeave')
-    let g:XkbSwitchFixNoBufLeave = 1
-endif
-
-let s:last_ienter_bufnr = 0
+" gvim client-server workaround:
+" 1. Globally managed keyboard layouts:
+"    Save Insert mode keyboard layout periodically (as fast as CursorHoldI
+"    event triggers). This is important as gvim can lose it if another file is
+"    being open from an external program (terminal or file manager) using
+"    option --remote-tab (and similar)
+" 2. Per window managed keyboard layouts:
+"    Save Insert mode keyboard layout in TabLeave event
+let s:XkbSwitchSaveILayout = has('gui_running') && has('clientserver')
+let s:XkbSwitchFocused = 1
+let s:XkbSwitchLastIEnterBufnr = 0
 
 
 fun! <SID>xkb_mappings_load()
@@ -235,6 +246,9 @@ fun! <SID>imappings_load()
 endfun
 
 fun! <SID>xkb_switch(mode,...)
+    if s:XkbSwitchSaveILayout && !g:XkbSwitch['local'] && !s:XkbSwitchFocused
+        return
+    endif
     for ft in g:XkbSwitchSkipFt
         if ft == &ft
             return
@@ -279,22 +293,32 @@ fun! <SID>xkb_switch(mode,...)
 endfun
 
 fun! <SID>xkb_save(...)
+    let imode = mode() =~ '^[iR]'
+    let save_ilayout_param = s:XkbSwitchSaveILayout && a:0
+    if save_ilayout_param && !g:XkbSwitch['local'] &&
+                \ ( !imode || !s:XkbSwitchFocused )
+        return
+    endif
     for ft in g:XkbSwitchSkipFt
         if ft == &ft
             return
         endif
     endfor
+    let save_ilayout_param_local = save_ilayout_param && g:XkbSwitch['local']
     " BEWARE: if buffer has not entered Insert mode yet (i.e.
     " b:xkb_mappings_loaded is not loaded yet) then specific Normal mode
     " keyboard layout for this buffer will be lost
-    if !exists('b:xkb_mappings_loaded')
+    let xkb_loaded = save_ilayout_param_local ?
+                \ getbufvar(a:1, 'xkb_mappings_loaded') :
+                \ exists('b:xkb_mappings_loaded')
+    if !xkb_loaded
         return
     endif
     let cur_layout = libcall(g:XkbSwitch['backend'], g:XkbSwitch['get'], '')
-    if g:XkbSwitchFixNoBufLeave && exists('a:1')
+    if save_ilayout_param_local
         call setbufvar(a:1, 'xkb_ilayout', cur_layout)
     else
-        if mode() =~ '^[iR]'
+        if imode
             let b:xkb_ilayout = cur_layout
         else
             if g:XkbSwitchNLayout == ''
@@ -311,7 +335,8 @@ fun! <SID>enable_xkb_switch(force)
     if filereadable(g:XkbSwitch['backend']) == 1
         augroup XkbSwitch
             au!
-            autocmd InsertEnter * let s:last_ienter_bufnr = bufnr('%') |
+            autocmd InsertEnter *
+                        \ let s:XkbSwitchLastIEnterBufnr = bufnr('%') |
                         \ call <SID>xkb_switch(1)
             for item in g:XkbSwitchPostIEnterAuto
                 exe "autocmd InsertEnter ".item[0]['pat']." ".item[0]['cmd'].
@@ -321,14 +346,21 @@ fun! <SID>enable_xkb_switch(force)
             autocmd InsertLeave * call <SID>xkb_switch(0)
             " BEWARE: Select modes are not supported well when navigating
             " between windows or tabs due to vim restrictions
-            autocmd BufEnter * let s:last_ienter_bufnr = 0 |
+            autocmd BufEnter * let s:XkbSwitchLastIEnterBufnr = 0 |
                         \ call <SID>xkb_switch(mode() =~ '^[iR]', 2)
-            autocmd BufLeave * let s:last_ienter_bufnr = 0 |
+            autocmd BufLeave * let s:XkbSwitchLastIEnterBufnr = 0 |
                         \ call <SID>xkb_save()
-            if g:XkbSwitchFixNoBufLeave
-                autocmd TabLeave * if s:last_ienter_bufnr != 0 &&
-                            \ s:last_ienter_bufnr != bufnr('%') |
-                            \ call <SID>xkb_save(s:last_ienter_bufnr) | endif
+            if s:XkbSwitchSaveILayout
+                if g:XkbSwitch['local']
+                    autocmd TabLeave * if s:XkbSwitchLastIEnterBufnr != 0 &&
+                        \ s:XkbSwitchLastIEnterBufnr != bufnr('%') |
+                        \ call <SID>xkb_save(s:XkbSwitchLastIEnterBufnr) |
+                        \ endif
+                else
+                    autocmd FocusGained * let s:XkbSwitchFocused = 1
+                    autocmd FocusLost   * let s:XkbSwitchFocused = 0
+                    autocmd CursorHoldI * call <SID>xkb_save(1)
+                endif
             endif
         augroup END
     endif
