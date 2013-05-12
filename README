@@ -35,6 +35,8 @@ Features:
 
     will be loaded. Insert mode mappings duplicates make it easy to apply
     existing maps in Insert mode without switching current keyboard layout
+  - Fast and easy building of custom syntax based keyboard layout switching
+    rules in Insert mode
 
 
 Configuration:
