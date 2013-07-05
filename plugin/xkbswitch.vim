@@ -1,7 +1,7 @@
 " File:        xkbswitch.vim
 " Authors:     Alexey Radkov
 "              Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
-" Version:     0.9.3
+" Version:     0.9.4
 " Description: Automatic keyboard layout switching upon entering/leaving
 "              insert mode
 
@@ -15,6 +15,10 @@ let g:loaded_XkbSwitch = 1
 
 if !exists('g:XkbSwitchLib')
     if has('unix')
+        " do not load if there is no X11
+        if empty($DISPLAY)
+            finish
+        endif
         let g:XkbSwitchLib = '/usr/local/lib/libxkbswitch.so'
     elseif has('win64')
         let g:XkbSwitchLib = $VIMRUNTIME.'/libxkbswitch64.dll'
@@ -188,13 +192,16 @@ fun! <SID>xkb_mappings_load()
                     \ " :call <SID>xkb_switch(1, 1)<CR>".hcmd
     endfor
     xnoremap <buffer> <silent> <C-g>
-                \ :<C-u>call <SID>xkb_switch(1, 1)<CR>gv<C-g>
+                \ :<C-u>call <SID>xkb_switch(1, 1)<Bar>normal gv<CR><C-g>
     snoremap <buffer> <silent> <C-g>
-                \ <C-g>:<C-u>call <SID>xkb_switch(0)<CR>gv
+                \ <C-g>:<C-u>call <SID>xkb_switch(0)<Bar>normal gv<CR>
     if &selectmode =~ 'mouse'
-        smap <buffer> <silent> <LeftRelease> <Esc>gv<C-g>
-        nmap <buffer> <silent> <2-LeftMouse> viw<C-g>
-        nmap <buffer> <silent> <3-LeftMouse> V<C-g>
+        snoremap <buffer> <silent> <LeftRelease>
+                \ <C-g>:<C-u>call <SID>xkb_switch(1, 1)<Bar>normal gv<CR><C-g>
+        nnoremap <buffer> <silent> <2-LeftMouse>
+                \ viw:<C-u>call <SID>xkb_switch(1, 1)<Bar>normal gv<CR><C-g>
+        nnoremap <buffer> <silent> <3-LeftMouse>
+                \ V:<C-u>call <SID>xkb_switch(1, 1)<Bar>normal gv<CR><C-g>
     endif
     let b:xkb_mappings_loaded = 1
 endfun
@@ -203,11 +210,9 @@ fun! <SID>imappings_load()
     if empty(g:XkbSwitchIMappings)
         return
     endif
-    for ft in g:XkbSwitchIMappingsSkipFt
-        if ft == &ft
-            return
-        endif
-    endfor
+    if index(g:XkbSwitchIMappingsSkipFt, &ft) != -1
+        return
+    endif
     redir => mappingsdump
     silent imap
     redir END

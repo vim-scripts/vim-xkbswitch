@@ -1,10 +1,10 @@
-*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2013 June 25
+*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2013 July 5
 
                             ---------------------
                              Xkb Layout Switcher
                             ---------------------
 
-                                version 0.9.3
+                                version 0.9.4
 
 Authors: Alexey Radkov; Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
 
@@ -392,6 +392,22 @@ comments areas, but in the mdict rule we do not care about leaving areas
     mode without any character entered do it via Visual mode, e.g. enter
     <C-G><Esc> instead simply <Esc>.
 
+  - There is a clash with plugin EnhancedJumps when bufhidden=delete. When
+    jumping back to the previous buffer an error message
+>
+    E121: Undefined variable: mappingsdump
+<
+    will raise. This is because both autocommand BufRead of this plugin and
+    EnhancedJumps will use 'redir' simultaneously which is not permitted.
+    Normally there is very little probability to encounter this because option
+    'bufhidden' is empty by default. To work this around you can add line
+>
+    let g:XkbSwitchLoadOnBufRead = 0
+<
+    in your .vimrc. However this may break the very first keyboard layout
+    switching from Select mode in a just open buffer if there was no inserting
+    yet.
+
 ==============================================================================
                                             *xkbswitch-changes*
 A. Change History~
@@ -481,5 +497,8 @@ A. Change History~
 0.9.3
     - Fixes related to Select mode support
     - Proper keyboard layout switching when option selectmode contains 'mouse'
+
+0.9.4
+    - Switching between Select and Visual modes (with <C-g>) without flickers
 
 vim:tw=78:sts=8:ts=8:sw=8:noet:ft=help:
