@@ -1,10 +1,10 @@
-*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2014 August 1
+*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2015 January 6
 
                             ---------------------
                              Xkb Layout Switcher
                             ---------------------
 
-                                version 0.11
+                                version 0.12
 
 Authors: Alexey Radkov; Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
 
@@ -38,14 +38,19 @@ switched back!
 
 XkbSwitch requires OS dependent keyboard layout switcher. Currently it depends
 on xkb-switch (http://github.com/ierton/xkb-switch) for UNIX / X Server and
-xkb-switch-win (http://github.com/DeXP/xkb-switch-win) for Windows. Mac OS X
-keyboard layout switcher is currently unknown and hence not supported.
+xkb-switch-win (http://github.com/DeXP/xkb-switch-win) for Windows.
+
+For Mac OS X you can try Input Source Switcher
+(http://github.com/vovkasm/input-source-switcher) and set library path as
+>
+    let g:XkbSwitchLib = '/usr/local/lib/libInputSourceSwitcher.dylib'
+<
 
 ==============================================================================
                                             *xkbswitch-features*
 3. Features~
 
-  - Supported OS: UNIX / X Server, Windows
+  - Supported OS: UNIX / X Server, Windows, Mac OS X
   - Switches keyboard layout when entering / leaving Insert and Select modes
   - Keyboard layouts are stored separately for each buffer
   - Keyboard layouts are kept intact while navigating between windows or
@@ -433,6 +438,14 @@ comments areas, but in the mdict rule we do not care about leaving areas
     switching from Select mode in a just open buffer if there was no inserting
     yet.
 
+  - If you use gh-commands (|gh|, |gH| and |g_CTRL-H|) for your own specific
+    purposes then you'll probably want to disable mappings defined for some or
+    all of these commands in the plugin. For example
+>
+    let g:XkbSwitchSkipGhKeys = ['gh', 'gH']
+<
+    disables plugin mappings for two of them.
+
 ==============================================================================
                                             *xkbswitch-changes*
 A. Change History~
@@ -535,5 +548,11 @@ A. Change History~
     - Implemented full support for various selection models defined with
       option selectmode
     - Do not duplicate <SNR> mappings
+
+0.12
+    - Added support for Mac OS X using external library Input Source Switcher
+      (see updated docs)
+    - Added new global variable g:XkbSwitchSkipGhKeys which can be used to
+      optionally disable gh-mappings required for Select mode support
 
 vim:tw=78:sts=8:ts=8:sw=8:noet:ft=help:

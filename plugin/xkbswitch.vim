@@ -1,7 +1,7 @@
 " File:        xkbswitch.vim
 " Authors:     Alexey Radkov
 "              Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
-" Version:     0.11
+" Version:     0.12
 " Description: Automatic keyboard layout switching upon entering/leaving
 "              insert mode
 
@@ -14,7 +14,9 @@ endif
 let g:loaded_XkbSwitch = 1
 
 if !exists('g:XkbSwitchLib')
-    if has('unix')
+    if has('macunix')
+        let g:XkbSwitchLib = '/usr/local/lib/libxkbswitch.dylib'
+    elseif has('unix')
         " do not load if there is no X11
         if empty($DISPLAY)
             finish
@@ -33,6 +35,11 @@ endif
 " 'local' defines if backend gets and sets keyboard layout locally in the
 " window or not
 let s:XkbSwitchDict = {
+            \ 'macunix':
+            \ {'backend': g:XkbSwitchLib,
+            \  'get':     'Xkb_Switch_getXkbLayout',
+            \  'set':     'Xkb_Switch_setXkbLayout',
+            \  'local':   0},
             \ 'unix':
             \ {'backend': g:XkbSwitchLib,
             \  'get':     'Xkb_Switch_getXkbLayout',
@@ -51,7 +58,9 @@ let s:XkbSwitchDict = {
             \ }
 
 if !exists('g:XkbSwitch')
-    if has('unix')
+    if has('macunix')
+        let g:XkbSwitch = s:XkbSwitchDict['macunix']
+    elseif has('unix')
         let g:XkbSwitch = s:XkbSwitchDict['unix']
     elseif has('win32')
         let g:XkbSwitch = s:XkbSwitchDict['win32']
@@ -165,6 +174,10 @@ if !exists('g:XkbSwitchSyntaxRules')
     let g:XkbSwitchSyntaxRules = []
 endif
 
+if !exists('g:XkbSwitchSkipGhKeys')
+    let g:XkbSwitchSkipGhKeys = []
+endif
+
 if !exists('g:XkbSwitchSelectmodeKeys')
     let g:XkbSwitchSelectmodeKeys =
                 \ ['<S-Left>', '<S-Right>', '<S-Up>', '<S-Down>', '<S-End>',
@@ -200,8 +213,10 @@ endfun
 
 fun! <SID>xkb_mappings_load()
     for hcmd in ['gh', 'gH', 'g']
-        exe "nnoremap <buffer> <silent> ".hcmd.
-                    \ " :call <SID>xkb_switch(1, 1)<CR>".hcmd
+        if index(g:XkbSwitchSkipGhKeys, hcmd) == -1
+            exe "nnoremap <buffer> <silent> ".hcmd.
+                        \ " :call <SID>xkb_switch(1, 1)<CR>".hcmd
+        endif
     endfor
     xnoremap <buffer> <silent> <C-g>
                 \ :<C-u>call <SID>xkb_switch(1, 1)<Bar>normal gv<CR><C-g>
@@ -385,8 +400,7 @@ fun! <SID>check_syntax_rules(force)
     for role in b:xkb_syntax_out_roles
         if b:xkb_saved_cur_synid == role
             let ilayout = exists('b:xkb_ilayout') ? b:xkb_ilayout :
-                        \ (exists('g:XkbSwitchILayout') ?
-                        \  g:XkbSwitchILayout : '')
+                        \ g:XkbSwitchILayout
             if ilayout != '' && ilayout != cur_layout
                 call libcall(g:XkbSwitch['backend'], g:XkbSwitch['set'],
                             \ ilayout)
@@ -526,8 +540,7 @@ fun! <SID>xkb_switch(mode, ...)
                 let b:xkb_ilayout = cur_layout
             else
                 let switched = exists('b:xkb_ilayout') ? b:xkb_ilayout :
-                            \ (exists('g:XkbSwitchILayout') ?
-                            \  g:XkbSwitchILayout : '')
+                            \ g:XkbSwitchILayout
                 if switched != ''
                     if switched != cur_layout &&
                                 \ !exists('b:xkb_ilayout_managed')
