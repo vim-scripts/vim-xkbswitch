@@ -1,10 +1,10 @@
-*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2015 January 6
+*xkbswitch.txt*   For Vim version 7.3 and above   Last change: 2016 January 12
 
                             ---------------------
                              Xkb Layout Switcher
                             ---------------------
 
-                                version 0.12
+                                version 0.13
 
 Authors: Alexey Radkov; Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
 
@@ -40,11 +40,14 @@ XkbSwitch requires OS dependent keyboard layout switcher. Currently it depends
 on xkb-switch (http://github.com/ierton/xkb-switch) for UNIX / X Server and
 xkb-switch-win (http://github.com/DeXP/xkb-switch-win) for Windows.
 
-For Mac OS X you can try Input Source Switcher
-(http://github.com/vovkasm/input-source-switcher) and set library path as
+For Mac OS X you can try xkbswitch-macosx
+(http://github.com/myshov/xkbswitch-macosx) or Input Source Switcher
+(http://github.com/vovkasm/input-source-switcher). In the latter case you will
+have to put line
 >
     let g:XkbSwitchLib = '/usr/local/lib/libInputSourceSwitcher.dylib'
 <
+into your .vimrc settings.
 
 ==============================================================================
                                             *xkbswitch-features*
@@ -176,6 +179,16 @@ g:XkbSwitchSkipIMappings.
 Beware: variable g:XkbSwitchSkipIMappings is not parameterized by keyboard
 layouts but only by filetypes.
 
+Besides natural Insert mode mappings, register insertion translations are also
+supported. For example being in Insert mode and having Russian winkeys layout
+on, you can insert content of register 'a' just printing <C-R>ф without
+switching current keyboard layout. To disable translation of register names in
+Insert mode put line
+>
+    let g:XkbSwitchLoadRIMappings = 0
+<
+into your .vimrc.
+
 ------------------------------------------------------------------------------
                                             *xkbswitch-default-layouts*
 5.2 Default layouts~
@@ -189,6 +202,21 @@ Also you can specify original Insert mode keyboard layout:
 >
     let g:XkbSwitchILayout = 'us'
 <
+Or unconditional Insert mode keyboard layout using buffer variable with the
+same name:
+>
+    let b:XkbSwitchILayout = 'us'
+<
+If b:XkbSwitchILayout is set to the empty value then the keyboard layout is
+not changed when entering Insert mode. Be aware that momental switching
+from-and-to Insert mode (e.g. with Insert mode command <C-O> and all types of
+selections) will turn current keyboard layout to the value of
+b:XkbSwitchILayout. If you want to use unconditional Insert mode keyboard
+layout by default then put line
+>
+    autocmd BufEnter * let b:XkbSwitchILayout = 'us'
+<
+into your .vimrc (change 'us' to desired value if needed).
 
 ------------------------------------------------------------------------------
                                             *xkbswitch-filetype-disable*
@@ -352,14 +380,14 @@ The next definition
  let g:XkbSwitchPostIEnterAuto = [
              \ [{'pat': '*.mdict', 'cmd': 'call MdictCheckLang(1)'}, 0] ]
 <
-registers an InsertEnter autocommand in augroup XkbSwitch. If we would have
-instead defined an InsertEnter autocommand here then the command would have
-been put before the standard InsertEnter autocommand in augroup XkbSwitch.
-Using variable g:XkbSwitchPostIEnterAuto ensures that the new command will run
-after the standard InsertEnter autocommand. The second element in an item
-inside g:XkbSwitchPostIEnterAuto can be 0 or 1. If it is 1 then XkbSwitch
-won't switch layout itself when entering Insert mode. In our case it should be
-0 because MdictCheckLang() requires preliminary switching keyboard layout from
+registers an InsertEnter autocommand in augroup XkbSwitch. If we had instead
+defined an InsertEnter autocommand here then the command would have been put
+before the standard InsertEnter autocommand in augroup XkbSwitch. Using
+variable g:XkbSwitchPostIEnterAuto ensures that the new command will run after
+the standard InsertEnter autocommand. The second element in an item inside
+g:XkbSwitchPostIEnterAuto can be 0 or 1. If it is 1 then XkbSwitch won't
+switch layout itself when entering Insert mode. In our case it should be 0
+because MdictCheckLang() requires preliminary switching keyboard layout from
 XkbSwitch when entering Insert mode.
 
 Starting from version 0.9 a generic helper for building custom syntax based
@@ -554,5 +582,14 @@ A. Change History~
       (see updated docs)
     - Added new global variable g:XkbSwitchSkipGhKeys which can be used to
       optionally disable gh-mappings required for Select mode support
+
+0.13
+    - Named registers insertion keys translation (e.g <C-R>a to <C-R>ф for
+      Russian winkeys layout)
+    - Better xkbswitch library search algorithm
+    - Option for choosing unconditional keyboard layout when entering Insert
+      mode with buffer-variable b:XkbSwitchILayout. This can also be used to
+      disable keyboard layout switching when entering Insert mode (see updated
+      docs)
 
 vim:tw=78:sts=8:ts=8:sw=8:noet:ft=help:

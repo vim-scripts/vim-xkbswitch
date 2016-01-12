@@ -1,7 +1,7 @@
 " File:        xkbswitch.vim
 " Authors:     Alexey Radkov
 "              Dmitry Hrabrov a.k.a. DeXPeriX (softNO@SPAMdexp.in)
-" Version:     0.12
+" Version:     0.13
 " Description: Automatic keyboard layout switching upon entering/leaving
 "              insert mode
 
@@ -15,13 +15,21 @@ let g:loaded_XkbSwitch = 1
 
 if !exists('g:XkbSwitchLib')
     if has('macunix')
-        let g:XkbSwitchLib = '/usr/local/lib/libxkbswitch.dylib'
+        if filereadable('/usr/local/lib/libxkbswitch.dylib')
+            let g:XkbSwitchLib = '/usr/local/lib/libxkbswitch.dylib'
+        else
+            let g:XkbSwitchLib = '/usr/lib/libxkbswitch.dylib'
+        endif
     elseif has('unix')
         " do not load if there is no X11
         if empty($DISPLAY)
             finish
         endif
-        let g:XkbSwitchLib = '/usr/local/lib/libxkbswitch.so'
+        if filereadable('/usr/local/lib/libxkbswitch.so')
+            let g:XkbSwitchLib = '/usr/local/lib/libxkbswitch.so'
+        else
+            let g:XkbSwitchLib = '/usr/lib/libxkbswitch.so'
+        endif
     elseif has('win64')
         let g:XkbSwitchLib = $VIMRUNTIME.'/libxkbswitch64.dll'
     elseif has('win32')
@@ -80,12 +88,22 @@ if !exists('g:XkbSwitchSkipIMappings')
     let g:XkbSwitchSkipIMappings = {}
 endif
 
+if !exists('g:XkbSwitchLoadRIMappings')
+    let g:XkbSwitchLoadRIMappings = 1
+endif
+
 if !exists('g:XkbSwitchSkipFt')
     let g:XkbSwitchSkipFt = ['tagbar', 'gundo', 'nerdtree', 'fuf']
 endif
 
 if !exists('g:XkbSwitchNLayout')
     let g:XkbSwitchNLayout = ''
+endif
+
+let s:XkbSwitchGlobalLayout = ''
+
+if !exists('g:XkbSwitchRestoreGlobalLayout')
+    let g:XkbSwitchRestoreGlobalLayout = 0
 endif
 
 if !exists('g:XkbSwitchILayout')
@@ -198,6 +216,14 @@ let s:XkbSwitchSaveILayout = has('gui_running') && has('clientserver')
 let s:XkbSwitchFocused = 1
 let s:XkbSwitchLastIEnterBufnr = 0
 
+let s:XkbSwitchIRegList = []
+if g:XkbSwitchLoadRIMappings
+    let s:XkbSwitchIRegList = range(char2nr('a'), char2nr('z'))
+    for char in ['"', '%', '#', '*', '+', '/', ':', '.', '-', '=']
+        call add(s:XkbSwitchIRegList, char2nr(char))
+    endfor
+endif
+
 
 fun! <SID>load_all()
     if index(g:XkbSwitchSkipFt, &ft) != -1
@@ -278,7 +304,10 @@ fun! <SID>imappings_load()
     for mapping in mappings
         let mappingskeys[split(mapping)[1]] = 1
     endfor
+    let skip_rim_list = []
     for tr in g:XkbSwitchIMappings
+        let from = g:XkbSwitchIMappingsTr[tr]['<']
+        let to   = g:XkbSwitchIMappingsTr[tr]['>']
         for mapping in mappings
             let value = substitute(mapping,
                         \ '\s*\S\+\s\+\S\+\s\+\(.*\)', '\1', '')
@@ -292,8 +321,6 @@ fun! <SID>imappings_load()
             if match(data[1], '^\c\%(<Plug>\|<SNR>\)') != -1
                 continue
             endif
-            let from  = g:XkbSwitchIMappingsTr[tr]['<']
-            let to    = g:XkbSwitchIMappingsTr[tr]['>']
             " replace characters starting control sequences with spaces
             let clean = ''
             if g:XkbSwitchIMappingsTrCtrl
@@ -320,6 +347,21 @@ fun! <SID>imappings_load()
                     \ data[1][i]."', '')"
                 endif
             endfor
+            if g:XkbSwitchLoadRIMappings
+                let rim_key = matchstr(data[1], '^\c<C-R>\zs.$')
+                if !empty(rim_key)
+                    if index(s:XkbSwitchIRegList, char2nr(rim_key)) == -1
+                        let rim_key_tr = tr(rim_key, to, from)
+                        if rim_key_tr != rim_key &&
+                                    \ index(s:XkbSwitchIRegList,
+                                    \ char2nr(rim_key_tr)) != -1
+                            call add(skip_rim_list, rim_key_tr)
+                        endif
+                    else
+                        call add(skip_rim_list, rim_key)
+                    endif
+                endif
+            endif
             " do not reload existing mapping unnecessarily
             " FIXME: list of mappings to skip depends on value of &filetype,
             " therefore it must be reloaded on FileType events!
@@ -340,6 +382,18 @@ fun! <SID>imappings_load()
             exe mapcmd.' <silent> <buffer> '.expr.' '.substitute(newkey.' '.
                         \ maparg(data[1], 'i'), '|', '|', 'g')
         endfor
+        if g:XkbSwitchLoadRIMappings
+            for rim_key_nr in s:XkbSwitchIRegList
+                let rim_key = nr2char(rim_key_nr)
+                let rim_key_tr = tr(rim_key, from, to)
+                if index(s:XkbSwitchIRegList, char2nr(rim_key_tr)) != -1 ||
+                            \ index(skip_rim_list, rim_key) != -1
+                    continue
+                endif
+                exe 'inoremap <silent> <buffer> <C-R>'.rim_key_tr.' <C-R>'.
+                            \ rim_key
+            endfor 
+        endif
     endfor
 endfun
 
@@ -493,6 +547,9 @@ fun! <SID>xkb_switch(mode, ...)
         return
     endif
     let cur_layout = libcall(g:XkbSwitch['backend'], g:XkbSwitch['get'], '')
+    if g:XkbSwitchRestoreGlobalLayout && empty(s:XkbSwitchGlobalLayout)
+        let s:XkbSwitchGlobalLayout = cur_layout
+    endif
     let nlayout = g:XkbSwitchNLayout != '' ? g:XkbSwitchNLayout :
                 \ (exists('b:xkb_nlayout') ? b:xkb_nlayout : '')
     if a:mode == 0
@@ -539,13 +596,16 @@ fun! <SID>xkb_switch(mode, ...)
             if b:xkb_pending_imode && b:xkb_pending_ilayout != cur_layout
                 let b:xkb_ilayout = cur_layout
             else
-                let switched = exists('b:xkb_ilayout') ? b:xkb_ilayout :
-                            \ g:XkbSwitchILayout
-                if switched != ''
-                    if switched != cur_layout &&
-                                \ !exists('b:xkb_ilayout_managed')
-                        call libcall(g:XkbSwitch['backend'],
-                                    \ g:XkbSwitch['set'], switched)
+                if !exists('b:XkbSwitchILayout') || b:XkbSwitchILayout != ''
+                    let switched = exists('b:XkbSwitchILayout') ?
+                            \ b:XkbSwitchILayout : (exists('b:xkb_ilayout') ?
+                            \ b:xkb_ilayout : g:XkbSwitchILayout)
+                    if switched != ''
+                        if switched != cur_layout &&
+                                    \ !exists('b:xkb_ilayout_managed')
+                            call libcall(g:XkbSwitch['backend'],
+                                        \ g:XkbSwitch['set'], switched)
+                        endif
                     endif
                 endif
             endif
@@ -600,6 +660,17 @@ fun! <SID>xkb_save(...)
     endif
 endfun
 
+fun! <SID>xkb_restore_global_layout()
+    if empty(s:XkbSwitchGlobalLayout)
+        return
+    endif
+    let cur_layout = libcall(g:XkbSwitch['backend'], g:XkbSwitch['get'], '')
+    if cur_layout != s:XkbSwitchGlobalLayout
+        call libcall(g:XkbSwitch['backend'], g:XkbSwitch['set'],
+                    \ s:XkbSwitchGlobalLayout)
+    endif
+endfun
+
 fun! <SID>enable_xkb_switch(force)
     if g:XkbSwitchEnabled && !a:force
         return
@@ -634,6 +705,7 @@ fun! <SID>enable_xkb_switch(force)
                         \ call <SID>xkb_switch(mode() =~ '^[iR]', 2)
             autocmd BufLeave * let s:XkbSwitchLastIEnterBufnr = 0 |
                         \ call <SID>xkb_save()
+            autocmd VimLeave * call <SID>xkb_restore_global_layout()
             if s:XkbSwitchSaveILayout
                 if g:XkbSwitch['local']
                     autocmd TabLeave * if s:XkbSwitchLastIEnterBufnr != 0 &&
